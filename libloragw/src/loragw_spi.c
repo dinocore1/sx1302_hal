@@ -54,6 +54,93 @@ License: Revised BSD License, see LICENSE.TXT file include in the project
 
 #define LGW_BURST_CHUNK     1024
 
+
+static
+int smcu_spi_r(void *com_target, uint8_t spi_mux_target, uint16_t address, uint8_t *data, uint8_t size)
+{
+    int err;
+    int spi_device;
+    uint8_t out_buf[4];
+    struct spi_ioc_transfer k[2];
+    struct spi_ioc_transfer* t;
+
+    /* check input variables */
+    CHECK_NULL(com_target);
+    CHECK_NULL(data);
+
+    spi_device = *(int *)com_target; /* must check that com_target is not null beforehand */
+
+    out_buf[0] = spi_mux_target;
+    out_buf[1] = READ_ACCESS | ((address >> 8) & 0x7F);
+    out_buf[2] =               ((address >> 0) & 0xFF);
+    out_buf[3] = size;
+
+    t = &k[0];
+    memset(t, 0, sizeof(struct spi_ioc_transfer));
+    t->tx_buf = (unsigned long) out_buf;
+    t->rx_buf = NULL;
+    t->len = 4;
+    t->cs_change = 1;
+    t->delay_usecs = 5000;
+
+    t = &k[1];
+    memset(t, 0, sizeof(struct spi_ioc_transfer));
+    t->tx_buf = NULL;
+    t->rx_buf = (unsigned long) data;
+    t->len = size;
+
+    if ((err = ioctl(spi_device, SPI_IOC_MESSAGES(2), k)) < 0) {
+        DEBUG_MSG("ERROR: SPI READ FAILURE\n");
+        return LGW_SPI_ERROR;
+    } else {
+        DEBUG_MSG("Note: SPI read success\n");
+        return LGW_SPI_SUCCESS;
+    }
+}
+
+static
+int smcu_spi_w(void *com_target, uint8_t spi_mux_target, uint16_t address, uint8_t *data, uint8_t size)
+{
+    int err;
+    int spi_device;
+    uint8_t out_buf[4];
+    struct spi_ioc_transfer k[2];
+    struct spi_ioc_transfer* t;
+
+    /* check input variables */
+    CHECK_NULL(com_target);
+    CHECK_NULL(data);
+
+    spi_device = *(int *)com_target; /* must check that com_target is not null beforehand */
+
+    out_buf[0] = spi_mux_target;
+    out_buf[1] = WRITE_ACCESS | ((address >> 8) & 0x7F);
+    out_buf[2] =                ((address >> 0) & 0xFF);
+    out_buf[3] = size;
+
+    t = &k[0];
+    memset(t, 0, sizeof(struct spi_ioc_transfer));
+    t->tx_buf = (unsigned long) out_buf;
+    t->rx_buf = NULL;
+    t->len = 4;
+    t->cs_change = 1;
+
+    t = &k[1];
+    memset(t, 0, sizeof(struct spi_ioc_transfer));
+    t->tx_buf = (unsigned long) data;
+    t->rx_buf = NULL;
+    t->len = size;
+
+    if ((err = ioctl(spi_device, SPI_IOC_MESSAGES(2), k)) < 0) {
+        DEBUG_MSG("ERROR: SPI READ FAILURE\n");
+        return LGW_SPI_ERROR;
+    } else {
+        DEBUG_MSG("Note: SPI read success\n");
+        return LGW_SPI_SUCCESS;
+    }
+}
+
+
 /* -------------------------------------------------------------------------- */
 /* --- PUBLIC FUNCTIONS DEFINITION ------------------------------------------ */
 
@@ -160,85 +247,21 @@ int lgw_spi_close(void *com_target) {
 
 /* Simple write */
 int lgw_spi_w(void *com_target, uint8_t spi_mux_target, uint16_t address, uint8_t data) {
-    int spi_device;
-    uint8_t out_buf[4];
-    uint8_t command_size;
-    struct spi_ioc_transfer k;
-    int a;
-
-    /* check input variables */
-    CHECK_NULL(com_target);
-
-    spi_device = *(int *)com_target; /* must check that spi_target is not null beforehand */
-
-    /* prepare frame to be sent */
-    out_buf[0] = spi_mux_target;
-    out_buf[1] = WRITE_ACCESS | ((address >> 8) & 0x7F);
-    out_buf[2] =                ((address >> 0) & 0xFF);
-    out_buf[3] = data;
-    command_size = 4;
-
-    /* I/O transaction */
-    memset(&k, 0, sizeof(k)); /* clear k */
-    k.tx_buf = (unsigned long) out_buf;
-    k.len = command_size;
-    k.speed_hz = SPI_SPEED;
-    k.cs_change = 0;
-    k.bits_per_word = 8;
-    a = ioctl(spi_device, SPI_IOC_MESSAGE(1), &k);
-
-    /* determine return code */
-    if (a != (int)k.len) {
-        DEBUG_MSG("ERROR: SPI WRITE FAILURE\n");
-        return LGW_SPI_ERROR;
-    } else {
-        DEBUG_MSG("Note: SPI write success\n");
-        return LGW_SPI_SUCCESS;
-    }
+    return smcu_spi_w(com_target, spi_mux_target, address, &data, 1);
 }
 
 /* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
 
 /* Simple read */
 int lgw_spi_r(void *com_target, uint8_t spi_mux_target, uint16_t address, uint8_t *data) {
-    int spi_device;
-    uint8_t out_buf[5];
-    uint8_t command_size;
-    uint8_t in_buf[ARRAY_SIZE(out_buf)];
-    struct spi_ioc_transfer k;
-    int a;
+    int err;
+    uint8_t buf[2];
 
-    /* check input variables */
-    CHECK_NULL(com_target);
-    CHECK_NULL(data);
-
-    spi_device = *(int *)com_target; /* must check that com_target is not null beforehand */
-
-    /* prepare frame to be sent */
-    out_buf[0] = spi_mux_target;
-    out_buf[1] = READ_ACCESS | ((address >> 8) & 0x7F);
-    out_buf[2] =               ((address >> 0) & 0xFF);
-    out_buf[3] = 0x00;
-    out_buf[4] = 0x00;
-    command_size = 5;
-
-    /* I/O transaction */
-    memset(&k, 0, sizeof(k)); /* clear k */
-    k.tx_buf = (unsigned long) out_buf;
-    k.rx_buf = (unsigned long) in_buf;
-    k.len = command_size;
-    k.cs_change = 0;
-    a = ioctl(spi_device, SPI_IOC_MESSAGE(1), &k);
-
-    /* determine return code */
-    if (a != (int)k.len) {
-        DEBUG_MSG("ERROR: SPI READ FAILURE\n");
-        return LGW_SPI_ERROR;
-    } else {
-        DEBUG_MSG("Note: SPI read success\n");
-        *data = in_buf[command_size - 1];
-        return LGW_SPI_SUCCESS;
+    if ((err = smcu_spi_r(com_target, spi_mux_target, address, buf, 2)) == LGW_SPI_SUCCESS) {
+        *data = buf[1];
     }
+
+    return err;
 }
 
 /* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
