@@ -2084,8 +2084,9 @@ void thread_up(void) {
                 MSG("ERROR: [up] bin_to_b64 failed line %u\n", (__LINE__ - 5));
                 exit(EXIT_FAILURE);
             }
-            buff_up[buff_index] = '"';
-            ++buff_index;
+            memcpy((void *)(buff_up + buff_index), (void *)",\"sig\":\"", 8);
+            buff_index += 8;
+            
 
             /* End of packet serialization */
             buff_up[buff_index] = '}';
