@@ -32,7 +32,7 @@ $(OBJDIR)/%.o: src/%.c $(INCLUDES) | $(OBJDIR)
 
 ### static library
 
-libed25519.a:  $(OBJDIR)/ge.o $(OBJDIR)/sc.o $(OBJDIR)/fe.o $(OBJDIR)/sha512.o $(OBJDIR)/sign.o $(OBJDIR)/keypair.o
+libed25519.a:  $(OBJDIR)/ge.o $(OBJDIR)/sc.o $(OBJDIR)/fe.o $(OBJDIR)/sha512.o $(OBJDIR)/sign.o $(OBJDIR)/verify.o $(OBJDIR)/keypair.o
 	$(AR) rcs $@ $^
 
 ### test programs

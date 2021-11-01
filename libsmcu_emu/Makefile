@@ -23,6 +23,7 @@ all: libsmcu_emu.a
 
 clean:
 	rm -f libsmcu_emu.a
+	rm -f test_units
 	rm -f $(OBJDIR)/*.o
 
 ### library module target
@@ -38,13 +39,13 @@ $(OBJDIR)/%.o: src/%.cc $(INCLUDES) | $(OBJDIR)
 
 ### static library
 
-libsmcu_emu.a:  $(OBJDIR)/smcu_emu.o
+libsmcu_emu.a:  $(OBJDIR)/smcu_emu.o $(OBJDIR)/sha-256.o
 	$(AR) rcs $@ $^
 
 ### test programs
 
 test_units: tests/test_units.cc libsmcu_emu.a
-	$(CXX) -L. -L../libed25519 -Iinc -I. -I../libed25519/inc -g -O0  $< -o $@ $(LIBS) -lgtest_main -lgtest -lpthread
+	$(CXX) -L. -L../libed25519 -Iinc -I. -Isrc -I../libed25519/inc -g -O0  $< -o $@ $(LIBS) -lgtest_main -lgtest -lpthread
 
 
 ### EOF
