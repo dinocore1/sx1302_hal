@@ -8,7 +8,7 @@ CC := $(CROSS_COMPILE)gcc
 CXX := $(CROSS_COMPILE)g++
 AR := $(CROSS_COMPILE)ar
 
-CFLAGS := -O2 -Wall -Wextra -std=c99 -Iinc -I. -I../libed25519/inc -Wno-strict-aliasing
+CFLAGS := -g -O0 -Wall -Wextra -std=c99 -Iinc -I. -I../libed25519/inc -I../libloragw/inc -Wno-strict-aliasing
 
 OBJDIR = obj
 INCLUDES = $(wildcard inc/*.h) $(wildcard ../libed25519/inc/*.h)
@@ -45,7 +45,7 @@ libsmcu_emu.a:  $(OBJDIR)/smcu_emu.o $(OBJDIR)/sha-256.o
 ### test programs
 
 test_units: tests/test_units.cc libsmcu_emu.a
-	$(CXX) -L. -L../libed25519 -Iinc -I. -Isrc -I../libed25519/inc -g -O0  $< -o $@ $(LIBS) -lgtest_main -lgtest -lpthread
+	$(CXX) -L. -L../libed25519 -L../libloragw -Iinc -I. -Isrc -I../libed25519/inc -I../libloragw/inc -g -O0  $< -o $@ $(LIBS) -lgtest_main -lgtest -lpthread
 
 
 ### EOF
