@@ -9,5 +9,7 @@ TEST(smcu_emu, init)
   struct SMCU* smcu;
   ASSERT_EQ(SMCU_OK, smcu_init(&smcu));
 
+  smcu_free(smcu);
+
 }
 
