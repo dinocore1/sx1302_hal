@@ -1,3 +1,4 @@
+use std::io::BufWriter;
 use std::io::prelude::*;
 
 use std::io::BufReader;
@@ -21,7 +22,7 @@ use log::{info, warn, error};
 
 pub const SMCU_OK: i32 = 0;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 struct Config {
     #[serde(deserialize_with = "deserialize_b58_pub")]
     pub_key: PublicKey,
@@ -74,11 +75,20 @@ fn read_config_from_file<P: AsRef<Path>>(path: P) -> std::io::Result<Config> {
     return Ok(config);
 }
 
+fn write_config_file<P: AsRef<Path>>(path: P, config: &Config) -> std::io::Result<()> {
+    let config_str = toml::to_string_pretty(config)
+                                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+    let file = File::open(path)?;
+    let mut writer = BufWriter::new(file);
+    writer.write_all(config_str.as_bytes())
+}
+
 #[no_mangle]
 pub extern "C"
 fn smcu_init(smcu_ptr: &mut *mut SMCU) -> i32 {
 
-    let smcu = match read_config_from_file("smcu.toml") {
+    const CONFIG_FILE_PATH: &str = "smcu.toml";
+    let smcu = match read_config_from_file(CONFIG_FILE_PATH) {
         Ok(config) => {
             Box::new(SMCU {
                 keypair: Keypair {
@@ -91,9 +101,18 @@ fn smcu_init(smcu_ptr: &mut *mut SMCU) -> i32 {
         Err(e) => {
             error!("error reading config file: {}", e);
             let mut csprng = OsRng{};
+            let keypair = Keypair::generate(&mut csprng);
+            
+
+            write_config_file(CONFIG_FILE_PATH, &Config {
+                pub_key: keypair.public,
+                priv_key: keypair.secret,
+            });
+
             Box::new(SMCU {
-                keypair: Keypair::generate(&mut csprng),
+                keypair: keypair,
             })
+
         }
     };
 

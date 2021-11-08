@@ -1,13 +1,12 @@
 .PHONY: all clean
 
 all: target/debug/libsmcu.a
-	
 
 clean:
 	cargo clean
 	rm -f unit_test
 
-target/debug/libsmcu.a:
+target/debug/libsmcu.a: src/*.rs
 	cargo build
 	cbindgen --config cbindgen.toml --crate smcu --output inc/smcu.h
 
