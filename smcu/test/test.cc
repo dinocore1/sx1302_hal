@@ -10,6 +10,5 @@ TEST(smcu_emu, init)
   ASSERT_EQ(SMCU_OK, smcu_init(&smcu));
 
   smcu_free(smcu);
-
 }
 
