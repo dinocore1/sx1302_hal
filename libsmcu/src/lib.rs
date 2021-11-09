@@ -1,24 +1,21 @@
-use std::io::BufWriter;
-use std::io::prelude::*;
+mod loradatarate;
 
-use std::io::BufReader;
+use loradatarate::*;
+
+
+use std::io::prelude::*;
+use std::io::{BufReader, BufWriter};
 use std::path::Path;
 use std::fs::File;
-
 use std::ffi::{CStr};
 use std::os::raw::c_char;
-
-use rand::{self};
 
 use ed25519_dalek::{Keypair, PublicKey, SecretKey, Signer};
 use rand::rngs::OsRng;
 use toml::{self};
-
 use serde::{de, Serialize, Deserialize, ser::Serializer};
-
 use log::{info, warn, error};
-
-
+use bytes::{BufMut, BytesMut};
 
 pub const SMCU_OK: i32 = 0;
 
@@ -35,17 +32,6 @@ T: AsRef<[u8]> {
     serializer.serialize_str(&bs58::encode(input).into_string())
 }
 
-fn deserialize_b58_pub<'de, D>(deserializer: D) -> Result<PublicKey, D::Error>
-where D: de::Deserializer<'de> {
-    let buf = String::deserialize(deserializer)?;
-    let mut data = [0u8; ed25519_dalek::PUBLIC_KEY_LENGTH];
-    let _ = bs58::decode(buf).into(&mut data).map_err(|e| de::Error::custom(format!("base58 decode error: {}", e)))?;
-    match PublicKey::from_bytes(&data) {
-        Ok(k) => Ok(k),
-        Err(e) => Err(de::Error::custom(format!("{}", e)))
-    }
-}
-
 fn deserialize_b58_priv<'de, D>(deserializer: D) -> Result<SecretKey, D::Error>
 where D: de::Deserializer<'de> {
     let buf = String::deserialize(deserializer)?;
@@ -57,15 +43,21 @@ where D: de::Deserializer<'de> {
     }
 }
 
+
 pub struct SMCU {
     keypair: Keypair,
 }
 
 #[repr(C)]
 pub struct LoraPacket {
-    data: *const u8,
-    data_len: u32,
-    freq: u32, // in 100 KHz
+    data: [u8 ; 256],
+    data_len: u16,
+    rssi: i32,
+
+    freq_hz: u32,
+    tmstmp: u32,
+    bandwidth: u8,
+    datarate: u8,
 
 }
 
@@ -141,12 +133,19 @@ fn smcu_free(smcu_ptr: *mut SMCU) {
 pub extern "C"
 fn smcu_sign(smcu_ptr: *mut SMCU, message_str: *const c_char, pkt_ptr: *const LoraPacket) -> i32 {
     let smcu = unsafe { &mut *smcu_ptr };
-    let message = unsafe { CStr::from_ptr(message_str) };
+    //let message = unsafe { CStr::from_ptr(message_str) };
     let pkt = unsafe { & *pkt_ptr };
+
+    let mut message = BytesMut::new();
+
+    message.put(&pkt.data[..pkt.data_len as usize]);
+    message.put_u32(pkt.data_len as u32);
+    message.put_u32(pkt.tmstmp);
+    message.put_i32(pkt.rssi);
 
     
 
-    let signature = smcu.keypair.sign(message.to_bytes());
+    //let signature = smcu.keypair.sign(message.to_bytes());
     
     return SMCU_OK;
 }
@@ -175,5 +174,25 @@ mod tests {
 
         assert_eq!(derive_pub, keypair.public);
 
+    }
+
+    #[test]
+    fn test_freq_float() {
+        let f_mhz = 902.5246_f32;
+        let f_khz = f_mhz * 1000_f32;
+        let r = f_khz.round() as u32;
+        assert_eq!(902525_u32, r);
+
+    }
+
+    #[test]
+    fn put_i32_eq_u32() {
+        let mut a = BytesMut::new();
+        a.put_i32(-13_i32);
+
+        let mut b = BytesMut::new();
+        b.put_u32(-13_i32 as u32);
+
+        assert_eq!(&a, &b);
     }
 }
