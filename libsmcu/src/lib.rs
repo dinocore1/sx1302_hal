@@ -18,6 +18,8 @@ use log::{info, warn, error};
 use bytes::{BufMut, BytesMut};
 
 pub const SMCU_OK: i32 = 0;
+pub const SIGNATURE_LENGTH: usize = 64;
+pub type signature_t = [u8;SIGNATURE_LENGTH];
 
 #[derive(Debug, Serialize, Deserialize)]
 struct Config {
@@ -131,7 +133,7 @@ fn smcu_free(smcu_ptr: *mut SMCU) {
 
 #[no_mangle]
 pub extern "C"
-fn smcu_sign(smcu_ptr: *mut SMCU, message_str: *const c_char, pkt_ptr: *const LoraPacket) -> i32 {
+fn smcu_sign(smcu_ptr: *mut SMCU, sig: &mut signature_t, pkt_ptr: *const LoraPacket) -> i32 {
     let smcu = unsafe { &mut *smcu_ptr };
     //let message = unsafe { CStr::from_ptr(message_str) };
     let pkt = unsafe { & *pkt_ptr };
@@ -146,6 +148,11 @@ fn smcu_sign(smcu_ptr: *mut SMCU, message_str: *const c_char, pkt_ptr: *const Lo
     
 
     //let signature = smcu.keypair.sign(message.to_bytes());
+
+    sig[0] = 0xba;
+    sig[1] = 0xdf;
+    sig[2] = 0x00;
+    
     
     return SMCU_OK;
 }
