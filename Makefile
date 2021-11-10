@@ -6,7 +6,7 @@ export
 
 ### general build targets
 
-.PHONY: all clean install install_conf libtools libloragw packet_forwarder util_net_downlink util_chip_id
+.PHONY: all clean install install_conf libtools libloragw libsmcu packet_forwarder util_net_downlink util_chip_id
 
 all: libtools libloragw packet_forwarder util_net_downlink util_chip_id
 
@@ -16,7 +16,10 @@ libtools:
 libloragw: libtools
 	$(MAKE) all -e -C $@
 
-packet_forwarder: libloragw
+libsmcu:
+	$(MAKE) all -e -C $@
+
+packet_forwarder: libloragw libsmcu
 	$(MAKE) all -e -C $@
 
 util_net_downlink: libtools

@@ -16,6 +16,8 @@ License: Revised BSD License, see LICENSE.TXT file include in the project
 #ifndef _BASE64_H
 #define _BASE64_H
 
+#define BASE64_SIZE(x) (4*(x/3))
+
 /* -------------------------------------------------------------------------- */
 /* --- DEPENDANCIES --------------------------------------------------------- */
 

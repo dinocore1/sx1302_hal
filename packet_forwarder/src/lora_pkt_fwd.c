@@ -60,6 +60,7 @@ License: Revised BSD License, see LICENSE.TXT file include in the project
 #include "loragw_reg.h"
 #include "loragw_gps.h"
 #include "cursor/packing.h"
+#include "smcu.h"
 
 /* -------------------------------------------------------------------------- */
 /* --- PRIVATE MACROS ------------------------------------------------------- */
@@ -109,7 +110,8 @@ License: Revised BSD License, see LICENSE.TXT file include in the project
 #define STD_FSK_PREAMB  5
 
 #define STATUS_SIZE     200
-#define TX_BUFF_SIZE    ((540 * NB_PKT_MAX) + 30 + STATUS_SIZE)
+#define HARDWARE_BUF_SIZE 300
+#define TX_BUFF_SIZE    ((540 * NB_PKT_MAX) + 30 + STATUS_SIZE + HARDWARE_BUF_SIZE)
 #define ACK_BUFF_SIZE   64
 
 #define UNIX_GPS_EPOCH_OFFSET 315964800 /* Number of seconds ellapsed between 01.Jan.1970 00:00:00
@@ -246,6 +248,9 @@ static uint32_t nb_pkt_received_fsk = 0;
 
 static struct lgw_conf_debug_s debugconf;
 static uint32_t nb_pkt_received_ref[16];
+
+/* SMCU emulator */
+static struct SMCU* smcu;
 
 /* -------------------------------------------------------------------------- */
 /* --- PRIVATE FUNCTIONS DECLARATION ---------------------------------------- */
@@ -1426,6 +1431,9 @@ int main(int argc, char ** argv)
         printf("INFO: concentrator EUI: 0x%016" PRIx64 "\n", eui);
     }
 
+    /* prepare the SMCU emulator */
+    smcu_init(&smcu);
+
     /* spawn threads to manage upstream and downstream */
     i = pthread_create( &thrid_up, NULL, (void * (*)(void *))thread_up, NULL);
     if (i != 0) {
@@ -1737,6 +1745,10 @@ void thread_up(void) {
     buff_up[3] = PKT_PUSH_DATA;
     *(uint32_t *)(buff_up + 4) = net_mac_h;
     *(uint32_t *)(buff_up + 8) = net_mac_l;
+
+    /* SMCU */
+    signature_t hardware_sig;
+    struct LoraPacket smcu_pkt;
 
     while (!exit_sig && !quit_sig) {
 
@@ -2084,8 +2096,34 @@ void thread_up(void) {
                 MSG("ERROR: [up] bin_to_b64 failed line %u\n", (__LINE__ - 5));
                 exit(EXIT_FAILURE);
             }
-            memcpy((void *)(buff_up + buff_index), (void *)",\"sig\":\"", 8);
-            buff_index += 8;
+            memcpy((void *)(buff_up + buff_index), (void *)",\"hw_sig\":\"", 11);
+            buff_index += 11;
+
+            smcu_pkt.data_len = p->size;
+            memcpy(smcu_pkt.data, p->payload, p->size);
+            smcu_pkt.tmstmp = p->count_us;
+            smcu_pkt.rssis = p->rssis;
+            smcu_pkt.snr = p->snr;
+            smcu_pkt.freq_hz = p->freq_hz;
+            smcu_pkt.bandwidth = p->bandwidth;
+            smcu_pkt.datarate = p->datarate;
+
+            if (smcu_sign(smcu, &hardware_sig, &smcu_pkt) != SMCU_OK) {
+                MSG("ERROR: [up] hardware signature failed %u\n", (__LINE__ - 1));
+                exit(EXIT_FAILURE);
+            }
+
+            j = bin_to_b64(hardware_sig, SIGNATURE_LENGTH, (char* )(buff_up + buff_index), BASE64_SIZE(64) + 1); /* +1 for null char */
+            if (j>0) {
+                buff_index += j;
+            } else {
+                MSG("ERROR: [up] bin_to_b64 failed line %u\n", (__LINE__ - 4));
+                exit(EXIT_FAILURE);
+            }
+            memcpy((void*)(buff_up + buff_index), (void *)"\",\"hw_id\":\"", 11);
+            buff_index += 11;
+
+            //TODO: add hardware_id
             
 
             /* End of packet serialization */

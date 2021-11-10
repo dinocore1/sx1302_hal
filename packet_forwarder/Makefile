@@ -40,9 +40,15 @@ ifneq ($(wildcard $(LGW_PATH)/inc/config.h),)
 endif
 LGW_INC += $(LGW_PATH)/inc/loragw_hal.h
 
+### libsmcu ###
+
+SMCU_PATH := ../libsmcu
+LSMCU_INC := $(wildcard .$(SMCU_PATH)/inc/*.h)
+
+
 ### Linking options
 
-LIBS := -lloragw -ltinymt32 -lparson -lbase64 -lrt -lpthread -lm -lcursor
+LIBS := -lloragw -lsmcu -ltinymt32 -lparson -lbase64 -lrt -lpthread -lm -lcursor -ldl
 
 ### General build targets
 
@@ -84,10 +90,10 @@ $(OBJDIR)/%.o: src/%.c $(INCLUDES) | $(OBJDIR)
 
 ### Main program compilation and assembly
 
-$(OBJDIR)/$(APP_NAME).o: src/$(APP_NAME).c $(LGW_INC) $(INCLUDES) | $(OBJDIR)
-	$(CC) -c $(CFLAGS) $(VFLAG) -I$(LGW_PATH)/inc $< -o $@
+$(OBJDIR)/$(APP_NAME).o: src/$(APP_NAME).c $(LGW_INC) $(LSMCU_INC) $(INCLUDES) | $(OBJDIR)
+	$(CC) -c $(CFLAGS) $(VFLAG) -I$(SMCU_PATH)/inc -I$(LGW_PATH)/inc $< -o $@
 
 $(APP_NAME): $(OBJDIR)/$(APP_NAME).o $(LGW_PATH)/libloragw.a $(OBJDIR)/jitqueue.o
-	$(CC) -L$(LGW_PATH) -L$(LIB_PATH) $< $(OBJDIR)/jitqueue.o -o $@ $(LIBS)
+	$(CC) -L$(SMCU_PATH) -L$(LGW_PATH) -L$(LIB_PATH) $< $(OBJDIR)/jitqueue.o -o $@ $(LIBS)
 
 ### EOF
