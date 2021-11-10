@@ -1,6 +1,7 @@
 mod loradatarate;
 
 use loradatarate::*;
+use rand::RngCore;
 
 
 use std::io::prelude::*;
@@ -18,6 +19,7 @@ use log::{info, warn, error};
 use bytes::{BufMut, BytesMut};
 
 pub const SMCU_OK: i32 = 0;
+pub const SMCU_ERR: i32 = -1;
 pub const SIGNATURE_LENGTH: usize = 64;
 pub type signature_t = [u8;SIGNATURE_LENGTH];
 
@@ -26,6 +28,8 @@ struct Config {
     #[serde(serialize_with = "serialize_b58")]
     #[serde(deserialize_with = "deserialize_b58_priv")]
     secret_key: SecretKey,
+
+    hardware_id: String,
 }
 
 fn serialize_b58<S, T>(input: &T, serializer: S) -> Result<S::Ok, S::Error>
@@ -48,19 +52,19 @@ where D: de::Deserializer<'de> {
 
 pub struct SMCU {
     keypair: Keypair,
+    hardware_id: String,
 }
 
 #[repr(C)]
 pub struct LoraPacket {
     data: [u8 ; 256],
     data_len: u16,
-    rssi: i32,
-
-    freq_hz: u32,
     tmstmp: u32,
+    rssis: f32,
+    snr: f32,
+    freq_hz: u32,
     bandwidth: u8,
     datarate: u8,
-
 }
 
 fn read_config_from_file<P: AsRef<Path>>(path: P) -> std::io::Result<Config> {
@@ -92,7 +96,8 @@ fn smcu_init(smcu_ptr: &mut *mut SMCU) -> i32 {
                 keypair: Keypair {
                     public: PublicKey::from(&config.secret_key),
                     secret: config.secret_key,
-                }
+                },
+                hardware_id: config.hardware_id,
             })
         },
 
@@ -103,6 +108,7 @@ fn smcu_init(smcu_ptr: &mut *mut SMCU) -> i32 {
 
             let config = Config {
                 secret_key: keypair.secret,
+                hardware_id: format!("A{:0>8}", csprng.next_u32())
             };
             
 
@@ -115,6 +121,7 @@ fn smcu_init(smcu_ptr: &mut *mut SMCU) -> i32 {
                     public: keypair.public,
                     secret: config.secret_key,
                 },
+                hardware_id: config.hardware_id,
             })
 
         }
@@ -143,19 +150,50 @@ fn smcu_sign(smcu_ptr: *mut SMCU, sig: &mut signature_t, pkt_ptr: *const LoraPac
     message.put(&pkt.data[..pkt.data_len as usize]);
     message.put_u32(pkt.data_len as u32);
     message.put_u32(pkt.tmstmp);
-    message.put_i32(pkt.rssi);
 
+
+    let rssi = round_float(pkt.rssis, 0);
+    message.put_i32(rssi);
+
+    let snr = round_float(pkt.snr, 1);
+    message.put_i32(snr);
+
+    let dr = match LoraDatarate::try_from(pkt.datarate) {
+        Ok(dr) => dr,
+        Err(e) => {
+            error!("error decoding datarate: {}", e);
+            return SMCU_ERR;
+        }
+    };
+
+    let bw = match LoraBandwidth::try_from(pkt.bandwidth) {
+        Ok(bw) => bw,
+        Err(e) => {
+            error!("error decoding bandwith: {}", e);
+            return SMCU_ERR;
+        }
+    };
+
+    let datr = Datr::new(dr, bw);
+    let datr_str = datr.to_string();
+    message.put(datr_str.as_bytes());
     
 
-    //let signature = smcu.keypair.sign(message.to_bytes());
+    let freq_khz = pkt.freq_hz / 1000;
+    message.put_u32(freq_khz);
 
-    sig[0] = 0xba;
-    sig[1] = 0xdf;
-    sig[2] = 0x00;
-    
-    
+    message.put(smcu.hardware_id.as_bytes());
+
+    let signature = smcu.keypair.sign(&message[..]);
+    sig.clone_from_slice(signature.as_ref());
     return SMCU_OK;
 }
+
+fn round_float(v: f32, i: i32) -> i32 {
+    (v * 10.0_f32.powi(i)).round() as i32
+}
+
+
 
 #[cfg(test)]
 mod tests {
@@ -184,12 +222,24 @@ mod tests {
     }
 
     #[test]
+    fn round_float_test() {
+        assert_eq!(90252, round_float(902.5246777_f32, 2));
+        assert_eq!(-421, round_float(-42.12222_f32, 1));
+    }
+
+    #[test]
     fn test_freq_float() {
-        let f_mhz = 902.5246_f32;
+        let f_mhz = 902.5246777_f32;
         let f_khz = f_mhz * 1000_f32;
         let r = f_khz.round() as u32;
         assert_eq!(902525_u32, r);
+    }
 
+    #[test]
+    fn test_freq_int() {
+        let f_mhz = 902_525_000_u32;
+        let f_khz = f_mhz / 1000;
+        assert_eq!(902525_u32, f_khz);
     }
 
     #[test]

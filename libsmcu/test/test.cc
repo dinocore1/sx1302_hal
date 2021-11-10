@@ -19,9 +19,13 @@ TEST(smcu_emu, sign)
 
   signature_t sig;
   LoraPacket pkt;
-  pkt.data_len = 0;
+  pkt.data[0] = 'a';
+  pkt.data_len = 1;
+  pkt.freq_hz = 902489000;
+  pkt.datarate = 6;
+  pkt.bandwidth = 0x04;
 
-  smcu_sign(smcu, &sig, &pkt);
+  EXPECT_EQ(SMCU_OK, smcu_sign(smcu, &sig, &pkt));
 
   smcu_free(smcu);
 }

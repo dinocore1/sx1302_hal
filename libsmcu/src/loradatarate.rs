@@ -84,7 +84,7 @@ pub struct Datr {
 }
 
 impl Datr {
-    fn new(dr: LoraDatarate, bw: LoraBandwidth) -> Self {
+    pub fn new(dr: LoraDatarate, bw: LoraBandwidth) -> Self {
         Datr { datarate: dr, bandwidth: bw }
     }
 }
