@@ -8,7 +8,7 @@ use std::io::prelude::*;
 use std::io::{BufReader, BufWriter};
 use std::path::Path;
 use std::fs::File;
-use std::ffi::{CStr};
+use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
 
 use ed25519_dalek::{Keypair, PublicKey, SecretKey, Signer};
@@ -52,7 +52,7 @@ where D: de::Deserializer<'de> {
 
 pub struct SMCU {
     keypair: Keypair,
-    hardware_id: String,
+    hardware_id: CString,
 }
 
 #[repr(C)]
@@ -97,7 +97,7 @@ fn smcu_init(smcu_ptr: &mut *mut SMCU) -> i32 {
                     public: PublicKey::from(&config.secret_key),
                     secret: config.secret_key,
                 },
-                hardware_id: config.hardware_id,
+                hardware_id: CString::new(config.hardware_id).expect("CString::new failed"),
             })
         },
 
@@ -121,7 +121,7 @@ fn smcu_init(smcu_ptr: &mut *mut SMCU) -> i32 {
                     public: keypair.public,
                     secret: config.secret_key,
                 },
-                hardware_id: config.hardware_id,
+                hardware_id: CString::new(config.hardware_id).expect("CString::new failed"),
             })
 
         }
@@ -136,6 +136,24 @@ fn smcu_init(smcu_ptr: &mut *mut SMCU) -> i32 {
 pub extern "C"
 fn smcu_free(smcu_ptr: *mut SMCU) {
     let _ = unsafe { Box::from_raw(smcu_ptr) };
+}
+
+#[no_mangle]
+pub extern "C"
+fn smcu_get_hardwareid(smcu_ptr: *mut SMCU) -> *const c_char {
+    let smcu = unsafe { &mut *smcu_ptr };
+
+    smcu.hardware_id.as_ptr()
+
+    /*
+
+    let hw_str = CString::new(smcu.hardware_id.clone()).unwrap();
+    let s = hw_str.to_bytes_with_nul();
+
+    unsafe {
+        std::ptr::copy_nonoverlapping(s.as_ptr(), hardware_id_str, s.len());
+    }
+    */
 }
 
 #[no_mangle]

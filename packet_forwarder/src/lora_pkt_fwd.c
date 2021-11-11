@@ -2120,10 +2120,16 @@ void thread_up(void) {
                 MSG("ERROR: [up] bin_to_b64 failed line %u\n", (__LINE__ - 4));
                 exit(EXIT_FAILURE);
             }
-            memcpy((void*)(buff_up + buff_index), (void *)"\",\"hw_id\":\"", 11);
-            buff_index += 11;
+            memcpy((void*)(buff_up + buff_index), (void *)"\"", 1);
+            buff_index += 1;
 
-            //TODO: add hardware_id
+            j = snprintf((char*) &buff_up[buff_index], TX_BUFF_SIZE-buff_index, ",\"hw_id\":\"%s\"", smcu_get_hardwareid(smcu));
+            if (j > 0) {
+                buff_index += j;
+            } else {
+                MSG("ERROR: [up] snprintf failed line %u\n", (__LINE__ - 4));
+                exit(EXIT_FAILURE);
+            }
             
 
             /* End of packet serialization */
