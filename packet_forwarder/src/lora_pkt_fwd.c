@@ -2113,7 +2113,7 @@ void thread_up(void) {
                 exit(EXIT_FAILURE);
             }
 
-            j = bin_to_b64(hardware_sig, SIGNATURE_LENGTH, (char* )(buff_up + buff_index), BASE64_SIZE(64) + 1); /* +1 for null char */
+            j = bin_to_b64(hardware_sig, SIGNATURE_LENGTH, (char* )(buff_up + buff_index), TX_BUFF_SIZE-buff_index);
             if (j>0) {
                 buff_index += j;
             } else {
