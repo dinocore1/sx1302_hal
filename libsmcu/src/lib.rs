@@ -29,7 +29,9 @@ struct Config {
     #[serde(deserialize_with = "deserialize_b58_priv")]
     secret_key: SecretKey,
 
-    hardware_id: String,
+    #[serde(serialize_with = "serialize_b58")]
+    #[serde(deserialize_with = "deserialize_b58_pub")]
+    public_key: PublicKey,
 }
 
 fn serialize_b58<S, T>(input: &T, serializer: S) -> Result<S::Ok, S::Error>
@@ -49,10 +51,21 @@ where D: de::Deserializer<'de> {
     }
 }
 
+fn deserialize_b58_pub<'de, D>(deserializer: D) -> Result<PublicKey, D::Error>
+where D: de::Deserializer<'de> {
+    let buf = String::deserialize(deserializer)?;
+    let mut data = [0u8; ed25519_dalek::PUBLIC_KEY_LENGTH];
+    let _ = bs58::decode(buf).into(&mut data).map_err(|e| de::Error::custom(format!("base58 decode error: {}", e)))?;
+    match PublicKey::from_bytes(&data) {
+        Ok(k) => Ok(k),
+        Err(e) => Err(de::Error::custom(format!("{}", e)))
+    }
+}
+
 
 pub struct SMCU {
     keypair: Keypair,
-    hardware_id: CString,
+    hardware_id: u64,
 }
 
 #[repr(C)]
@@ -87,17 +100,17 @@ fn write_config_file<P: AsRef<Path>>(path: P, config: &Config) -> std::io::Resul
 
 #[no_mangle]
 pub extern "C"
-fn smcu_init(smcu_ptr: &mut *mut SMCU) -> i32 {
+fn smcu_init(smcu_ptr: &mut *mut SMCU, hw_id: u64) -> i32 {
 
     const CONFIG_FILE_PATH: &str = "smcu.toml";
     let smcu = match read_config_from_file(CONFIG_FILE_PATH) {
         Ok(config) => {
             Box::new(SMCU {
                 keypair: Keypair {
-                    public: PublicKey::from(&config.secret_key),
+                    public: config.public_key, //PublicKey::from(&config.secret_key),
                     secret: config.secret_key,
                 },
-                hardware_id: CString::new(config.hardware_id).expect("CString::new failed"),
+                hardware_id: hw_id,
             })
         },
 
@@ -108,7 +121,7 @@ fn smcu_init(smcu_ptr: &mut *mut SMCU) -> i32 {
 
             let config = Config {
                 secret_key: keypair.secret,
-                hardware_id: format!("A{:0>8}", csprng.next_u32())
+                public_key: keypair.public,
             };
             
 
@@ -121,7 +134,7 @@ fn smcu_init(smcu_ptr: &mut *mut SMCU) -> i32 {
                     public: keypair.public,
                     secret: config.secret_key,
                 },
-                hardware_id: CString::new(config.hardware_id).expect("CString::new failed"),
+                hardware_id: hw_id,
             })
 
         }
@@ -138,23 +151,7 @@ fn smcu_free(smcu_ptr: *mut SMCU) {
     let _ = unsafe { Box::from_raw(smcu_ptr) };
 }
 
-#[no_mangle]
-pub extern "C"
-fn smcu_get_hardwareid(smcu_ptr: *mut SMCU) -> *const c_char {
-    let smcu = unsafe { &mut *smcu_ptr };
-
-    smcu.hardware_id.as_ptr()
-
-    /*
-
-    let hw_str = CString::new(smcu.hardware_id.clone()).unwrap();
-    let s = hw_str.to_bytes_with_nul();
-
-    unsafe {
-        std::ptr::copy_nonoverlapping(s.as_ptr(), hardware_id_str, s.len());
-    }
-    */
-}
+const RF_PACKET_HEADER: &[u8] = b"rf";
 
 #[no_mangle]
 pub extern "C"
@@ -165,16 +162,13 @@ fn smcu_sign(smcu_ptr: *mut SMCU, sig: &mut signature_t, pkt_ptr: *const LoraPac
 
     let mut message = BytesMut::new();
 
+    message.put(RF_PACKET_HEADER);
+    message.put_u64(smcu.hardware_id);
     message.put(&pkt.data[..pkt.data_len as usize]);
     message.put_u32(pkt.data_len as u32);
     message.put_u32(pkt.tmstmp);
-
-
-    let rssi = round_float(pkt.rssis, 0);
-    message.put_i32(rssi);
-
-    let snr = round_float(pkt.snr, 1);
-    message.put_i32(snr);
+    message.put_i32(round_float(pkt.rssis, 0));
+    message.put_i32(round_float(pkt.snr, 1));
 
     let dr = match LoraDatarate::try_from(pkt.datarate) {
         Ok(dr) => dr,
@@ -200,8 +194,6 @@ fn smcu_sign(smcu_ptr: *mut SMCU, sig: &mut signature_t, pkt_ptr: *const LoraPac
     let freq_khz = pkt.freq_hz / 1000;
     message.put_u32(freq_khz);
 
-    message.put(smcu.hardware_id.as_bytes());
-
     let signature = smcu.keypair.sign(&message[..]);
     sig.clone_from_slice(signature.as_ref());
     return SMCU_OK;
@@ -222,7 +214,7 @@ mod tests {
     fn it_works() {
         SimpleLogger::new().init().unwrap();
         let mut smcu = 0 as *mut SMCU;
-        smcu_init(&mut smcu);
+        smcu_init(&mut smcu, 123);
 
         smcu_free(smcu);
         

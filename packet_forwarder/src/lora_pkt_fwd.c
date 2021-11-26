@@ -1432,7 +1432,7 @@ int main(int argc, char ** argv)
     }
 
     /* prepare the SMCU emulator */
-    smcu_init(&smcu);
+    smcu_init(&smcu, eui);
 
     /* spawn threads to manage upstream and downstream */
     i = pthread_create( &thrid_up, NULL, (void * (*)(void *))thread_up, NULL);
@@ -2123,14 +2123,6 @@ void thread_up(void) {
             memcpy((void*)(buff_up + buff_index), (void *)"\"", 1);
             buff_index += 1;
 
-            j = snprintf((char*) &buff_up[buff_index], TX_BUFF_SIZE-buff_index, ",\"hw_id\":\"%s\"", smcu_get_hardwareid(smcu));
-            if (j > 0) {
-                buff_index += j;
-            } else {
-                MSG("ERROR: [up] snprintf failed line %u\n", (__LINE__ - 4));
-                exit(EXIT_FAILURE);
-            }
-            
 
             /* End of packet serialization */
             buff_up[buff_index] = '}';
